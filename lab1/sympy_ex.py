@@ -22,7 +22,3 @@ def test_sympy():
 
 # Run the SymPy tests
 test_sympy()
-
-
-
-
