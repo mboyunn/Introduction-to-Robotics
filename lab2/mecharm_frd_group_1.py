@@ -6,6 +6,7 @@ from pymycobot import PI_BAUD, PI_PORT
 import csv
 import time
 
+# get_transformation_matrix will build the transformation matrix of a DH param row
 def get_transformation_matrix(a, alpha, d, theta):
     M = Matrix([[cos(theta), -sin(theta), 0, a],
                 [sin(theta)*cos(alpha), cos(theta)*cos(alpha), -sin(alpha), -sin(alpha)*d],
@@ -38,6 +39,7 @@ if mycobot.is_power_on():
         []
     ]
 
+    # calculate the forward kinematics matrix that will find the matrix to go from base to end effector
     T_01 = get_transformation_matrix(DH[0][0], DH[0][1], DH[0][2], DH[0][3])
     T_12 = get_transformation_matrix(DH[1][0], DH[1][1], DH[1][2], DH[1][3])
     T_23 = get_transformation_matrix(DH[2][0], DH[2][1], DH[2][2], DH[2][3])

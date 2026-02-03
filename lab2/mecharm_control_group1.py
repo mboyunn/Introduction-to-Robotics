@@ -3,17 +3,20 @@ from pymycobot import PI_BAUD, PI_PORT
 import csv
 import time
 
-
+# record_drag_points will write 10 datapoints to a csv file where each datapoint is a
+# row in the csv file consisting of the 6 joint angles and the coordinates the end effector is at.
+# additionally the method does angle validation to ensure that while the robot has all servos released,
+# the angles drag taught by the user are valid.
 def record_drag_points(mycobot, n_points=10):
 
     if mycobot.is_power_on():
         mycobot.release_all_servos()
-        with open("data.csv", "w", newline="") as csvfile:
+        with open("data.csv", "w") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["j1", "j2", "j3", "j4", "j5", "j6", "x", "y", "z", "rx", "ry", "rz"])
             recording = 0
             while recording < 10:
-                input(f"Move arm to point {recording+1}/{n_points}, then press ENTER to record...")
+                input(f"Move arm to point {recording+1}/{n_points}, then press ENTER to record...") # waits for user confirmation before recording
                 angles = mycobot.get_angles()
                 invalid = False
                 if 165 < angles[0] < -165:
@@ -36,41 +39,43 @@ def record_drag_points(mycobot, n_points=10):
                     invalid = True
                 if invalid:
                     continue
-                coords = mycobot.get_coords()
-                row = angles[:6] + coords[:6]
+                coords = mycobot.get_coords() # returns a list of 6 elements containing x,y,z,rz,ry,rz
+                row = angles[:6] + coords[:6] # concatening the angles and coords together in 1 array so we can write to csv 
                 writer.writerow(row)
                 print("Recorded")
-                mycobot.send_angles([0,0,0,0,0,0], 50)
+                mycobot.send_angles([0,0,0,0,0,0], 50) # send robot to origin
                 recording += 1
     else:
         print("Robot is not powering on.")
 
 
-def send_angles(mycobot, speed=50, move_wait=1.5):
+def send_angles(mycobot, speed=20, move_wait=6):
     if mycobot.is_power_on():
-        with open("data.csv", "r", newline="") as csvfile:
+        with open("data.csv", "r") as csvfile: # read the csv file
             file = csv.reader(csvfile)
-            next(file)
+            next(file) # skip the first row in csv file which will be the column names
             for row in file:
                 angles = [float(x) for x in row[0:6]]
                 mycobot.send_angles(angles, speed)
-                time.sleep(move_wait)
+                time.sleep(move_wait) # give the robot time to move to new location
+                print(angles)
+                print(mycobot.get_angles())
     else:
         print("Robot is not powering on.")
 
 
-def send_coords(mycobot, speed=50, move_wait=1.5):
+def send_coords(mycobot, speed=20, move_wait=6):
 
     if mycobot.is_power_on():
-        with open("data.csv", "r", newline="") as csvfile:
+        with open("data.csv", "r") as csvfile:
             file = csv.reader(csvfile)
-            next(file)
+            next(file) # skip the first row in csv file which will be the column names
             for row in file:
                 coords = [float(x) for x in row[6:]]
                 mycobot.send_coords(coords, speed)
-                time.sleep(move_wait)   
+                time.sleep(move_wait)  # give the robot time to move to new location
     else:
-        print("Robot is not powering on.")
+        print("Robot is not powering on.") 
 
 
 
