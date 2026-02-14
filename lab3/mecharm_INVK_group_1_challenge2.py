@@ -1,6 +1,9 @@
 import numpy as np
 from sympy  import symbols, cos, sin, atan2, pi, Matrix, lambdify 
 from scipy.optimize import least_squares
+from pymycobot import MechArm270
+from pymycobot import PI_BAUD, PI_PORT
+
 
 offsets = np.array([np.radians(0), -np.pi/2, np.radians(0), np.radians(0), np.radians(0), np.radians(0)])
 lower_bounds = np.radians(np.array([-165, -90, -180, -160, -115, -175])) - offsets
@@ -66,16 +69,21 @@ def inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, q_init, m
         return None
 
 
+def send_to(x_target, y_target, z_target, rx_d, ry_d, rz_d):
+    angles = inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, init_pose).tolist()
+    mycobot.send_angles(angles, 50)
+
+
 if __name__ == "__main__":
     q1, q2, q3, q4, q5, q6 = symbols('q1 q2 q3 q4 q5 q6')
     DH = [
         # [a, alpha, d, theta] for joint 1, then do for joint 2, 3, 4, 5, 6
         [0, np.radians(0), 114, q1],
-        [0, -np.pi/2, 0, q2],
+        [0, np.radians(-90), 0, q2],
         [95, np.radians(0), 0, q3],
-        [10, -np.pi/2, 95, q4],
-        [0, np.pi/2, 0, q5],
-        [0, -np.pi/2, 63.55, q6]
+        [10, np.radians(-90), 95, q4],
+        [0, np.radians(90), 0, q5],
+        [0, np.radians(-90), 60.55, q6]
     ]
 
     T_01 = get_transformation_matrix(DH[0][0], DH[0][1], DH[0][2], DH[0][3])
@@ -88,20 +96,34 @@ if __name__ == "__main__":
 
     forward_kinematics_func = lambdify((q1, q2, q3, q4, q5, q6), T_sym, "numpy")
 
-    # Example (Replace these values with collected coords from Lab 2)
-
-    x_target = 218.6
-    y_target = 91.3
-    z_target = 144.3
-    rx_d = np.radians(-137.69)  # Roll angle (in radians)
-    ry_d = np.radians(-68.97)  # Pitch angle (in radians)
-    rz_d = np.radians(-28.38)  # Yaw angle (in radians)
+    mycobot = MechArm270(PI_PORT, PI_BAUD)
+    mycobot.power_on()
+    mycobot.send_angles([0,0,0,0,0,0], 50)
     init_pose = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-    joint_angles = inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, init_pose)
-            
-    # output the joint angles. You may save the output to a csv file
-    if joint_angles is not None:
-        print("Joint Angles (Degrees):", np.degrees(joint_angles))
-        print("True Angles (Degrees):", [24.69,60.02,-51.32,-51.32,10.89,-112.32])
-    else:
-        print("Joint Angles (Degrees): None")
+
+    # open gripper
+    mycobot.set_gripper_value(0, 50, "default")
+
+
+    # send to origin
+    send_to(0,0,0,0,0,0)
+
+    # close gripper
+    mycobot.set_gripper_value(100, 50, "default")
+
+    # send to object
+    send_to(0,0,0,0,0,0)
+
+    # close gripper
+    mycobot.set_gripper_value(0, 50, "default")
+
+    # send to origin
+    send_to(0,0,0,0,0,0)
+
+    # place object
+    send_to(0,0,0,0,0,0)
+
+    # send to origin
+    send_to(0,0,0,0,0,0)
+
+    mycobot.power_off()
