@@ -1,17 +1,45 @@
 import numpy as np
 from sympy import symbols, cos, sin, pi, Matrix, lambdify
 from scipy.optimize import least_squares
+import csv
 
+# Offsets are assumed radians
+offsets = [0, 0, 0, 0, 0, 0]
 
-offsets = np.array([0, -90, 0, 0, 0, 0])
+q1, q2, q3, q4, q5, q6 = symbols('q1 q2 q3 q4 q5 q6')
+
+DH = [
+    [0,  0,      114, q1],
+    [0, -pi/2,     0, q2 - pi/2],
+    [95, 0,        0, q3],
+    [10, -pi/2,   95, q4],
+    [0,  pi/2,     0, q5],
+    [0, -pi/2,    63.55, q6],
+]
+
 def get_transformation_matrix(a, alpha, d, theta):
-    M = Matrix([[cos(theta), -sin(theta), 0, a],
-                [sin(theta)*cos(alpha), cos(theta)*cos(alpha), -sin(alpha), -sin(alpha)*d],
-                [sin(theta)*sin(alpha), cos(theta)*sin(alpha), cos(alpha), cos(alpha)*d],
-                [0, 0, 0, 1]])
-    return M
+    # Standard DH (a, alpha, d, theta)
+    return Matrix([
+        [cos(theta),            -sin(theta),           0,            a],
+        [sin(theta)*cos(alpha), cos(theta)*cos(alpha), -sin(alpha), -sin(alpha)*d],
+        [sin(theta)*sin(alpha), cos(theta)*sin(alpha),  cos(alpha),  cos(alpha)*d],
+        [0,                     0,                    0,            1]
+    ])
 
-def position_error(q_position, x_target, y_target, z_target, link_lengths):
+T = get_transformation_matrix(*DH[0])
+for i in range(1, len(DH)):
+    T = T @ get_transformation_matrix(*DH[i])
+
+# Lambdify a purely symbolic T(q)
+q_sym = symbols('q1:7')  # (q1..q6)
+
+def symbolic_forward_kinematics(q_values):
+    subs_dict = {q: off + ang for q, off, ang in zip([q1, q2, q3, q4, q5, q6], offsets, q_values)}
+    return T.subs(subs_dict)
+
+forward_kinematics_func = lambdify(q_sym, symbolic_forward_kinematics(q_sym), "numpy")
+
+def position_error(q_position, x_target, y_target, z_target):
     # Calculate forward kinematics specifying angles for just the first three joints
     q_full = np.zeros(6)
     q_full[:3] = q_position
@@ -37,9 +65,9 @@ def orientation_error(q_orientation, rx_d, ry_d, rz_d):
     #return an array of differences between calculated and target orientations
     return np.array([rx_d - roll, ry_d - pitch, rz_d - yaw], dtype=float)
 
-def inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, q_init, link_lengths, max_iterations=100, tolerance=1e-6):
+def inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, q_init, max_iterations=100, tolerance=1e-6):
     # Perform numerical inverse kinematics for position
-    position_args = (x_target, y_target, z_target, link_lengths)
+    position_args = (x_target, y_target, z_target)
     q_position_solution = least_squares(position_error, 
                                        np.array(q_init[:3]), 
                                         args=position_args, 
@@ -62,38 +90,52 @@ def inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, q_init, l
 
 
 if __name__ == "__main__":
-    q1, q2, q3, q4, q5, q6 = symbols('q1 q2 q3 q4 q5 q6')
-    DH = [
-        # [a, alpha, d, theta] for joint 1, then do for joint 2, 3, 4, 5, 6
-        [0, np.radians(0), 114, q1],
-        [0, np.radians(-90), 0, q2],
-        [95, np.radians(0), 0, q3],
-        [10, np.radians(-90), 95, q4],
-        [0, np.radians(90), 0, q5],
-        [0, np.radians(-90), 60.55, q6]
-    ]
+    # init pose in radians
+    init_pose = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1], dtype=float)
 
-    T_01 = get_transformation_matrix(DH[0][0], DH[0][1], DH[0][2], DH[0][3])
-    T_12 = get_transformation_matrix(DH[1][0], DH[1][1], DH[1][2], DH[1][3])
-    T_23 = get_transformation_matrix(DH[2][0], DH[2][1], DH[2][2], DH[2][3])
-    T_34 = get_transformation_matrix(DH[3][0], DH[3][1], DH[3][2], DH[3][3])
-    T_45 = get_transformation_matrix(DH[4][0], DH[4][1], DH[4][2], DH[4][3])
-    T_56 = get_transformation_matrix(DH[5][0], DH[5][1], DH[5][2], DH[5][3])
-    T_sym = T_01 * T_12 * T_23 * T_34 * T_45 * T_56
+    with open("val_ik_basic.csv", "w", newline="") as validation_file:
+        writer = csv.writer(validation_file)
+        writer.writerow([
+            "J1_T", "J2_T", "J3_T", "J4_T", "J5_T", "J6_T",
+            "J1_IK", "J2_IK", "J3_IK", "J4_IK", "J5_IK", "J6_IK"
+        ])
 
+        with open("data.csv", "r", newline="") as file:
+            csv_file = csv.reader(file)
+            next(csv_file)
 
-    forward_kinematics_func = lambdify((q1, q2, q3, q4, q5, q6), T_sym, "numpy")
+            for line in csv_file:
+                # Targets from file: decide whether joints are degrees or radians in your CSV.
+                # Here assuming CSV joints are degrees:
+                j_target_deg = np.array([float(line[i]) for i in range(6)], dtype=float)
+                j_target = np.deg2rad(j_target_deg)
 
-    # Example (Replace these values with collected coords from Lab 2)
-    x_target = 218.6
-    y_target = 91.3
-    z_target = 144.3
-    link_lengths = [DH[0][0], DH[1][0], DH[2][0], DH[3][0], DH[4][0], DH[5][0]]
-    rx_d = np.radians(-137.69)  # Roll angle (in radians)
-    ry_d = np.radians(-68.97)  # Pitch angle (in radians)
-    rz_d = np.radians(-28.38)  # Yaw angle (in radians)
-    q_init = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-    joint_angles = inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, q_init, link_lengths)
-            
-    #output the joint angles. You may save the output to a csv file
-    print("Joint Angles (Degrees):", np.degrees(joint_angles))
+                x_target = float(line[6])
+                y_target = float(line[7])
+                z_target = float(line[8])
+                rx_d = np.deg2rad(float(line[9]))
+                ry_d = np.deg2rad(float(line[10]))
+                rz_d = np.deg2rad(float(line[11]))
+
+                target_pose = [x_target, y_target, z_target, rx_d, ry_d, rz_d]
+                joint_angles = inverse_kinematics(x_target, y_target, z_target, rx_d, ry_d, rz_d, init_pose)
+
+                
+                if joint_angles is None:
+                    ik_deg = [np.nan]*6
+                else:
+                    ik_deg = np.rad2deg(joint_angles).tolist()
+
+                # target joints (your CSV targets are already degrees)
+                tgt_deg = j_target_deg.tolist()
+
+                # round both to 2 decimals
+                tgt_deg = [float(f"{v:.2f}") for v in tgt_deg]
+                ik_deg  = [float(f"{v:.2f}") if np.isfinite(v) else v for v in ik_deg]
+
+                # write: target first, then IK (both in degrees)
+                row = tgt_deg + ik_deg
+                writer.writerow(row)
+
+                # keep init_pose in radians for the solver
+                init_pose = joint_angles if joint_angles is not None else j_target

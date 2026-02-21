@@ -80,8 +80,8 @@ def inverse_kinematics(target_pose, init_pose, max_iter=1000, tolerance=1e-5, bo
 # init pose in radians
 init_pose = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1], dtype=float)
 
-with open("val_ik.csv", "w", newline="") as file2:
-    writer = csv.writer(file2)
+with open("val_ik_adv.csv", "w", newline="") as validation_file:
+    writer = csv.writer(validation_file)
     writer.writerow([
         "J1_T", "J2_T", "J3_T", "J4_T", "J5_T", "J6_T",
         "J1_IK", "J2_IK", "J3_IK", "J4_IK", "J5_IK", "J6_IK"
